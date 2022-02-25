@@ -1,98 +1,62 @@
-// Import dependencies
-import React, { useRef, useEffect } from "react";
-// Import required model here
-import * as cocossd from "@tensorflow-models/coco-ssd";
-import Webcam from "react-webcam";
-import "./App.css";
-// Import drawing utility here
-import { drawRect } from "./utilities";
+import * as coco from "@tensorflow-models/coco-ssd"
+import "@tensorflow/tfjs"
+import React, { useEffect, useRef, useState } from "react"
+import Webcam from "react-webcam"
+import "./App.css"
+import { drawDetections } from "./utilities"
 
 function App() {
-  const webcamRef = useRef(null);
-  const canvasRef = useRef(null);
+  const webcamRef = useRef(null)
+  const canvasRef = useRef(null)
+  const [loaded, setLoaded] = useState(false)
 
-  // Main function
-  const runCoco = async () => {
-    // Load network
-    const net = await cocossd.load();
+  const createDetector = (net, video, ctx) => async () => {
+    // Clear canvas
+    canvasRef.current.width = video.videoWidth
+    canvasRef.current.height = video.videoHeight
 
-    setInterval(() => {
-      detect(net);
-    }, 10);
-  };
+    const obj = await net.detect(video)
 
-  const detect = async (net) => {
-    // Check data is available
-    if (
-      typeof webcamRef.current !== "undefined" &&
-      webcamRef.current !== null &&
-      webcamRef.current.video.readyState === 4
-    ) {
-      // Get Video Properties
-      const video = webcamRef.current.video;
-      const videoWidth = webcamRef.current.video.videoWidth;
-      const videoHeight = webcamRef.current.video.videoHeight;
-
-      // Set video width
-      webcamRef.current.video.width = videoWidth;
-      webcamRef.current.video.height = videoHeight;
-
-      // Set canvas height and width
-      canvasRef.current.width = videoWidth;
-      canvasRef.current.height = videoHeight;
-
-      // Make Detections
-      const obj = await net.detect(video);
-      console.log(obj);
-
-      // Draw mesh
-      const ctx = canvasRef.current.getContext("2d");
-
-      // Update drawing utility
-      drawRect(obj, ctx);
-    }
-  };
+    // Draw mesh
+    drawDetections(obj, ctx)
+  }
 
   useEffect(() => {
-    runCoco();
-  }, []);
+    webcamRef.current.video.addEventListener("loadeddata", async () => {
+      const net = await coco.load()
+      setLoaded(true)
+
+      const video = webcamRef.current.video
+      webcamRef.current.video.width = video.videoWidth
+      webcamRef.current.video.height = video.videoHeight
+
+      const runDetector = createDetector(
+        net,
+        video,
+        canvasRef.current.getContext("2d")
+      )
+
+      const loop =  () => runDetector().then(() => requestAnimationFrame(loop))      
+
+      loop()
+    })
+  }, [webcamRef])
+
+  const styles = {
+    position: "absolute",
+    width: 640,
+    height: 480,
+    opacity: loaded ? 1 : 0.5,
+    animation: loaded ? "none" : "loading 1s ease infinite",
+    transition: "all 0.2s ease",
+  }
 
   return (
     <div className="App">
-      <header className="App-header">
-        <Webcam
-          ref={webcamRef}
-          muted={true}
-          style={{
-            position: "absolute",
-            marginLeft: "auto",
-            marginRight: "auto",
-            left: 0,
-            right: 0,
-            textAlign: "center",
-            zindex: 9,
-            width: 640,
-            height: 480,
-          }}
-        />
-
-        <canvas
-          ref={canvasRef}
-          style={{
-            position: "absolute",
-            marginLeft: "auto",
-            marginRight: "auto",
-            left: 0,
-            right: 0,
-            textAlign: "center",
-            zindex: 8,
-            width: 640,
-            height: 480,
-          }}
-        />
-      </header>
+      <Webcam ref={webcamRef} muted={true} style={styles} />
+      <canvas ref={canvasRef} style={styles} />
     </div>
-  );
+  )
 }
 
-export default App;
+export default App
